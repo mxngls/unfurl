@@ -12,3 +12,9 @@ pom.xml.asc
 .lein-failures
 .nrepl-port
 .cpcache/
+
+# Clojurescipt
+node_modules/
+.shadow-cljs/
+.clj-kondo/
+.lsp/.cache/

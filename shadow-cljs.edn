@@ -1,0 +1,8 @@
+;; shadow-cljs configuration
+{:source-paths ["src"]
+
+ :dependencies []
+
+ :builds {:app {:target    :node-script
+                :main      unfollow.core/main
+                :output-to "out/unfollow.js"}}}
