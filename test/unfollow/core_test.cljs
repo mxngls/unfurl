@@ -9,18 +9,21 @@
 (def MOCK_MASTODON_ACCESS_TOKEN "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0")
 
 
-(use-fixtures :each
-  (fn [t]
-    (let [saved (js/Object.assign #js {} js/process.env)]
-      ;; load required vars
-      (set! js/process.env.MASTODON_INSTANCE_URL MOCK_MASTODON_INSTANCE_URL)
-      (set! js/process.env.MASTODON_ACCESS_TOKEN MOCK_MASTODON_ACCESS_TOKEN)
+(defn setup-env
+  [t]
+  (let [saved (js/Object.assign #js {} js/process.env)]
+    ;; load required vars
+    (set! js/process.env.MASTODON_INSTANCE_URL MOCK_MASTODON_INSTANCE_URL)
+    (set! js/process.env.MASTODON_ACCESS_TOKEN MOCK_MASTODON_ACCESS_TOKEN)
 
-      ;; execute test
-      (t)
+    ;; execute test(s)
+    (t)
 
-      ;; restore previous environment state
-      (set! js/process.env saved))))
+    ;; restore previous environment state
+    (set! js/process.env saved)))
+
+
+(use-fixtures :each setup-env)
 
 
 (deftest read-config
