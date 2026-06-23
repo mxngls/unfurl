@@ -59,11 +59,35 @@
                  [(keyword rel) url]))))
 
 
-(defn fetch-page
+(defn fetch-raw
   "Generic wrapper around Javascript's fetch method with some error
    handling and custom header parsing.
   
-   Returns a result. In the successful case we it contains a map of:
+   Used across different endpoints handling more targeted fetch calls.
+   
+   Returns a response result."
+  [url & {:keys [wait method fetch-fn]
+          :or   {wait 3000
+                 method "GET"
+                 fetch-fn (fn [url opts] (js/fetch url opts))}}]
+  (go
+    (when (pos? wait)
+      (<! (timeout wait)))
+    (try
+      (let [res           (<p! (fetch-fn url #js {:headers #js
+                                                           {:Authorization (str "Bearer " (:token @config))}
+                                                  :method  method}))]
+        (if (.-ok res)
+          {:ok res}
+          (do  (log-err "HTTP error:" res)
+               {:error res})))
+
+      (catch :default e
+        (log-err "failed to fetch page:" e) {:error e}))))
+
+
+(defn fetch-page
+  "Returns a result which in the successful case we it contains a map of:
 
    1. items:  a vector of items for this page (an items shape depends on
               the provided endpoint)
@@ -74,35 +98,32 @@
    In case an error occured the we return the error as is. If the result
    of the fetch call is otherwise not processable we return the response
    object received as is."
-  [url & {:keys [wait method]
-          :or   {wait 3000
-                 method "GET"}}]
+  [url & opts]
   (go
-    (when (pos? wait)
-      (<! (timeout wait)))
     (try
-      (let [res           (<p! (js/fetch url #js {:headers #js {:Authorization (str "Bearer " (:token @config))}
-                                                  :method  method}))
-            content-type  (or (.get (.-headers res) "content-type") "")
-            body          (<p! (.text res))]
-        (cond
-          (not (.-ok res))
-          (do  (log-err "HTTP error:" res "\n" body)
-               {:error res})
+      (let [{:keys [ok error]} (<! (apply fetch-raw url opts))]
+        (if error
 
-          (not (str/includes? content-type "json"))
-          (do  (log-err "expected JSON got" (pr-str content-type) "for" url "\n" body)
-               {:error res})
+          error
 
-          :else
-          (let [data  (js/JSON.parse body)
-                arr   (if (array? data) data #js [data])
-                links (some-> (.get (.-headers res) "link") parse-link)]
-            {:ok {:items (js->clj arr :keywordize-keys true)
-                  :next (:next links)
-                  :prev (:prev links)}})))
+          (let [headers       (.-headers ok)
+                body          (<p! (.text ok))
+                content-type  (or (.get headers "content-type") "")]
+
+            (if (not (str/includes? content-type "json"))
+              (do (log-err "expected JSON got" (pr-str content-type) "\n" body)
+                  {:error ok})
+
+              (let [data  (js/JSON.parse body)
+                    arr   (if (array? data) data #js [data])
+                    links (some-> (.get headers "link") parse-link)]
+
+                {:ok {:items (js->clj arr :keywordize-keys true)
+                      :next  (:next links)
+                      :prev  (:prev links)}})))))
+
       (catch :default e
-        (log-err "failed to fetch page:" e)
+        (log-err "failed to read/parse body:" e)
         {:error e}))))
 
 
