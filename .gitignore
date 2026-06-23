@@ -18,3 +18,4 @@ node_modules/
 .shadow-cljs/
 .clj-kondo/
 .lsp/.cache/
+out/
