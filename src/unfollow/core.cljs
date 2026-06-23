@@ -11,12 +11,12 @@
 ;; * Following:   https://docs.joinmastodon.org/methods/accounts/#following
 ;; * Credentials: https://docs.joinmastodon.org/methods/accounts/#verify_credentials
 
-(def _log      js/console.log)
+(def log      js/console.log)
 (def log-err  js/console.error)
 
 
 (defn read-config
-  "Returns a result of either all required environment variables or a 
+  "Returns a result of either all required environment variables or a
    error containing a list of the ones that are missing."
   []
   (let [instance  (gobj/get js/process.env "MASTODON_INSTANCE_URL")
@@ -48,7 +48,8 @@
   "Parse link header according to RFC 8288. We limit ourselves to the shape described in
    [Paginating through API responses](https://docs.joinmastodon.org/api/guidelines/#pagination).
    
-   Returns a map from each link's `rel` (keywordized) to its URL, or nil."
+   Returns a map from each link's `rel` (keywordized) to its URL, or 
+   nil."
   [header]
   (into {} (for [link (str/split header #",\s*")]
              [(keyword (second (re-find #"rel=\"([^\"]+)\"" link)))
@@ -59,11 +60,17 @@
   "Generic wrapper around Javascript's fetch method with some error
    handling and custom header parsing.
   
-   Returns a map containing:
-   1. items:  a vector of items for this page (an items shape depends on 
+   Returns a result. In the successful case we it contains a map of:
+
+   1. items:  a vector of items for this page (an items shape depends on
               the provided endpoint)
    2. next:   URL of the next page — older entries (smaller ids), or nil
-   3. prev:   URL of the previous page — newer entries (larger ids), or nil"
+   3. prev:   URL of the previous page — newer entries (larger ids), or 
+              nil
+
+   In case an error occured the we return the error as is. If the result
+   of the fetch call is otherwise not processable we return the response
+   object received as is."
   [url & {:keys [wait method]
           :or   {wait 3000
                  method "GET"}}]
@@ -77,75 +84,81 @@
             body          (<p! (.text res))]
         (cond
           (not (.-ok res))
-          (do  (log-err "HTTP error:" res "\n" body) nil)
+          (do  (log-err "HTTP error:" res "\n" body)
+               {:error res})
 
           (not (str/includes? content-type "json"))
-          (do  (log-err "expected JSON got" (pr-str content-type) "for" url "\n" body) nil)
+          (do  (log-err "expected JSON got" (pr-str content-type) "for" url "\n" body)
+               {:error res})
 
           :else
           (let [data  (js/JSON.parse body)
                 arr   (if (array? data) data #js [data])
                 links (some-> (.get (.-headers res) "link") parse-link)]
-            {:items (js->clj arr :keywordize-keys true)
-             :next (:next links)
-             :prev (:prev links)})))
+            {:ok {:items (js->clj arr :keywordize-keys true)
+                  :next (:next links)
+                  :prev (:prev links)}})))
       (catch :default e
         (log-err "failed to fetch page:" e)
-        nil))))
+        {:error e}))))
 
 
 (defn get-self
-  "Returns the `Account` map for the account associated with the 
-   provided authorization token, or `nil.`"
+  "Returns a result containing the `Account` map for the account 
+   associated with the provided authorization token, or `nil.`"
   []
   (go
-    (let [url     (str    (:instance @config) "/api/v1/accounts/verify_credentials")
-          account (some-> (<! (fetch-page url))
-                          :items
-                          first)]
-      account)))
+    (let [url                 (str (:instance @config) "/api/v1/accounts/verify_credentials")
+          {:keys [ok error]}  (<! (fetch-page url))]
+      (if error
+        {:error error}
+        {:ok (-> ok
+                 :items
+                 first)}))))
 
 
 (defn get-following
-  "Returns a single page with \"items\" populated with `Account` maps 
-   for a given account associated with the provided id that this account is following."
+  "Returns a result containing a single page where \"items\" is 
+   populated with `Account` maps for a given account associated 
+   with the provided id that this account is following."
   [id & [query_params]]
   (go
     (let [params    (merge {:limit 80} query_params)
           qs        (str "?" (.toString (js/URLSearchParams. (clj->js params))))
           url       (str (:instance @config) "/api/v1/accounts/" id "/following" qs)
-          page      (<! (fetch-page url))]
-      page)))
+          {:keys [ok error]} (<! (fetch-page url))]
+      (if error
+        {:error error}
+        {:ok    ok}))))
 
 
 (defn get-following-all
-  "Returns a vector of all collected `Accounts` across pages the user
-   with the associated account id is following."
+  "Returns a result containing the vector of all collected `Accounts` 
+   across pages the user with the associated account id is following."
   [id]
-  (go-loop [following-page (<! (get-following id))
+  (go-loop [{:keys [ok error]} (<! (get-following id))
             accounts []]
 
-    (let [accounts  (into accounts (:items following-page))
-          max-id    (some-> (:next following-page)
-                            js/URL.
-                            .-searchParams
-                            (.get "max_id"))]
-      (if max-id
-        (recur (<! (get-following id {:max_id max-id})) accounts)
-        accounts))))
+    (if error
+      {:error error}
+      (let [following  (into accounts (:items ok))
+            next-url   (:next ok)]
+        (if next-url
+          (recur (<! (fetch-page next-url)) following)
+          {:ok following})))))
 
 
 (defn unfollow
   "Unfollows the account associated with the provided id.
   
-   Returns a `Relationship` map."
+   Returns a result containing a `Relationship` map."
   [id]
   (go
-    (let [url          (str (:instance @config) "/api/v1/accounts/" id "/unfollow")
-          relationship (-> (<! (fetch-page url {:method "POST" :wait 500}))
-                           :items
-                           first)]
-      relationship)))
+    (let [url                 (str (:instance @config) "/api/v1/accounts/" id "/unfollow")
+          {:keys [ok error]}  (->  (<! (fetch-page url {:method "POST" :wait 500})))]
+      (if error
+        {:error error}
+        (first {:items ok})))))
 
 
 (defn main
@@ -157,4 +170,8 @@
       (let [id       (:id account)
             accounts (<! (get-following-all id))]
         (doseq [acc accounts]
-          (<! (unfollow (:id acc))))))))
+          (let [{:keys [_ error]}  (<! (unfollow (:id acc)))
+                acc-name            (:display_name acc)]
+            (if error
+              (log-err (str "Failed to delete account:" acc-name "\n" error))
+              (log     (str "Successfully unfollowed:" acc-name)))))))))
