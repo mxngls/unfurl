@@ -15,18 +15,33 @@
 (def log-err  js/console.error)
 
 
-(def config
-  (delay
-      (let [instance  (gobj/get js/process.env "MASTODON_INSTANCE_URL")
-            token     (gobj/get js/process.env "MASTODON_API_KEY")
-            missing   (cond-> []
-                        (str/blank? instance) (conj "MASTODON_INSTANCE_URL")
-                        (str/blank? token)    (conj "MASTODON_API_KEY"))]
-        (when (seq missing)
-          (log-err (str "missing required environment variable(s):\n"
-                        (str/join "\n" (map #(str "- " %) missing))))
+(defn read-config
+  "Returns a result of either all required environment variables or a 
+   error containing a list of the ones that are missing."
+  []
+  (let [instance  (gobj/get js/process.env "MASTODON_INSTANCE_URL")
+        token     (gobj/get js/process.env "MASTODON_API_KEY")
+        missing   (cond-> []
+                    (str/blank? instance) (conj "MASTODON_INSTANCE_URL")
+                    (str/blank? token)    (conj "MASTODON_API_KEY"))]
+    (if (seq missing)
+      {:error missing}
+      {:ok    {:instance instance :token token}})))
+
+
+(defn load-config!
+  "Returns the config read from environment variables or instead logs
+   an error message and exits."
+  []
+  (let [{:keys [ok error]} (read-config)]
+    (if error
+      (do (log-err (str "missing required environment variable(s):\n"
+                        (str/join "\n" (map #(str "- " %) error))))
           (js/process.exit 1))
-        {:instance instance :token token})))
+      ok)))
+
+
+(def config (delay (load-config!)))
 
 
 (defn parse-link

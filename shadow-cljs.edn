@@ -1,8 +1,15 @@
 ;; shadow-cljs configuration
-{:source-paths ["src"]
+{:source-paths ["src" "test"]
 
  :dependencies []
 
- :builds {:app {:target    :node-script
+ :builds {;; main
+          :app {:target    :node-script
                 :main      unfollow.core/main
-                :output-to "out/unfollow.js"}}}
+                :output-to "out/unfollow.js"}
+
+          ;; tests
+          :test {:target    :node-test
+                 :output-to "out/unfollow_test.js"
+                 :ns-regexp "-test$"
+                 :autorun   true}}}
