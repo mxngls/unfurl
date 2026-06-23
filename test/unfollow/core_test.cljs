@@ -5,8 +5,8 @@
       [unfollow.core  :as core]))
 
 
-(def MOCK_MASTODON_INSTANCE_URL  "https://my.custom.instance.com")
-(def MOCK_MASTODON_API_KEY  "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0")
+(def MOCK_MASTODON_INSTANCE_URL "https://my.custom.instance.com")
+(def MOCK_MASTODON_ACCESS_TOKEN "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0")
 
 
 (use-fixtures :each
@@ -14,7 +14,7 @@
     (let [saved (js/Object.assign #js {} js/process.env)]
       ;; load required vars
       (set! js/process.env.MASTODON_INSTANCE_URL MOCK_MASTODON_INSTANCE_URL)
-      (set! js/process.env.MASTODON_API_KEY      MOCK_MASTODON_API_KEY)
+      (set! js/process.env.MASTODON_ACCESS_TOKEN MOCK_MASTODON_ACCESS_TOKEN)
 
       ;; execute test
       (t)
@@ -34,10 +34,10 @@
 
     (testing "with a single one (token) missing"
       ;; remove token loaded as part of fixture setup
-      (js-delete js/process.env "MASTODON_API_KEY")
+      (js-delete js/process.env "MASTODON_ACCESS_TOKEN")
       (let [{:keys [ok error]} (core/read-config)]
         (is (nil? ok))
-        (is (= ["MASTODON_API_KEY"] error))))))
+        (is (= ["MASTODON_ACCESS_TOKEN"] error))))))
 
 
 (deftest parse-link

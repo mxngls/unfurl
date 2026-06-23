@@ -20,10 +20,10 @@
    error containing a list of the ones that are missing."
   []
   (let [instance  (gobj/get js/process.env "MASTODON_INSTANCE_URL")
-        token     (gobj/get js/process.env "MASTODON_API_KEY")
+        token     (gobj/get js/process.env "MASTODON_ACCESS_TOKEN")
         missing   (cond-> []
                     (str/blank? instance) (conj "MASTODON_INSTANCE_URL")
-                    (str/blank? token)    (conj "MASTODON_API_KEY"))]
+                    (str/blank? token)    (conj "MASTODON_ACCESS_TOKEN"))]
     (if (seq missing)
       {:error missing}
       {:ok    {:instance instance :token token}})))
