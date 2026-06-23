@@ -1,7 +1,7 @@
 (ns unfollow.core
   (:require
-      [cljs.core.async :refer [<! go go-loop timeout]]
-      [cljs.core.async.interop :refer-macros [<p!]]
+      [cljs.core.async          :refer [<! go go-loop timeout]]
+      [cljs.core.async.interop  :refer-macros [<p!]]
       [clojure.string :as str]
       [goog.object :as gobj]))
 
@@ -52,8 +52,9 @@
    nil."
   [header]
   (into {} (for [link (str/split header #",\s*")]
-             [(keyword (second (re-find #"rel=\"([^\"]+)\"" link)))
-              (second (re-find #"<([^>]+)>" link))])))
+             (let [relation (second  (re-find #"rel=\"([^\"]+)\"" link))
+                   url      (second  (re-find #"<([^>]+)>" link))]
+               [(keyword relation) url]))))
 
 
 (defn fetch-page
@@ -169,9 +170,11 @@
     (when-let [account (<! (get-self))]
       (let [id       (:id account)
             accounts (<! (get-following-all id))]
+
         (doseq [acc accounts]
           (let [{:keys [_ error]}  (<! (unfollow (:id acc)))
                 acc-name            (:display_name acc)]
+
             (if error
               (log-err (str "Failed to delete account:" acc-name "\n" error))
-              (log     (str "Successfully unfollowed:" acc-name)))))))))
+              (log     (str "Successfully unfollowed:"  acc-name)))))))))

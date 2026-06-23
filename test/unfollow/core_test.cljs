@@ -38,3 +38,37 @@
       (let [{:keys [ok error]} (core/read-config)]
         (is (nil? ok))
         (is (= ["MASTODON_API_KEY"] error))))))
+
+
+(deftest parse-link
+  ;; NOTE: For a short overview of how pagination works in Mastodon and
+  ;;       what role the HTTP links header as therein refer to the
+  ;;       [pagination section](https://docs.joinmastodon.org/api/guidelines/#pagination)) of the guidelines.
+  (testing "HTTP link header parsing for pagination"
+    (let [next-link-val "https://mastodon.example/api/v1/endpoint?max_id=7163058"
+          prev-link-val "https://mastodon.example/api/v1/endpoint?min_id=7275607"
+          next-link     (str "<" next-link-val ">); rel=\"next\"")
+          prev-link     (str "<" prev-link-val ">); rel=\"prev\"")]
+
+      (testing "with both previous page and next page links."
+        (let [link    (str next-link ", " prev-link)
+              parsed  (core/parse-link link)]
+          (is (some? parsed))
+          (is (contains? parsed :prev))
+          (is (contains? parsed :next))
+          (is (= prev-link-val (:prev parsed)))
+          (is (= next-link-val (:next parsed)))))
+
+      (testing "with only a previous page link"
+        (let [link    prev-link
+              parsed  (core/parse-link link)]
+          (is (some? parsed))
+          (is (contains? parsed :prev))
+          (is (= prev-link-val (:prev parsed)))))
+
+      (testing "with only a next page link."
+        (let [link    next-link
+              parsed  (core/parse-link link)]
+          (is (some? parsed))
+          (is (contains?  parsed :next))
+          (is (= next-link-val (:next parsed))))))))
