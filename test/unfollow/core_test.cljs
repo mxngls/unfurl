@@ -47,13 +47,12 @@
   (testing "HTTP link header parsing for pagination"
     (let [next-link-val "https://mastodon.example/api/v1/endpoint?max_id=7163058"
           prev-link-val "https://mastodon.example/api/v1/endpoint?min_id=7275607"
-          next-link     (str "<" next-link-val ">); rel=\"next\"")
-          prev-link     (str "<" prev-link-val ">); rel=\"prev\"")]
+          next-link     (str "<" next-link-val ">; rel=\"next\"")
+          prev-link     (str "<" prev-link-val ">; rel=\"prev\"")]
 
       (testing "with both previous page and next page links."
         (let [link    (str next-link ", " prev-link)
               parsed  (core/parse-link link)]
-          (is (some? parsed))
           (is (contains? parsed :prev))
           (is (contains? parsed :next))
           (is (= prev-link-val (:prev parsed)))
@@ -62,13 +61,20 @@
       (testing "with only a previous page link"
         (let [link    prev-link
               parsed  (core/parse-link link)]
-          (is (some? parsed))
           (is (contains? parsed :prev))
           (is (= prev-link-val (:prev parsed)))))
 
       (testing "with only a next page link."
         (let [link    next-link
               parsed  (core/parse-link link)]
-          (is (some? parsed))
           (is (contains?  parsed :next))
-          (is (= next-link-val (:next parsed))))))))
+          (is (= next-link-val (:next parsed)))))
+
+      (testing "with an empy string."
+        (let [link   ""
+              parsed (core/parse-link link)]
+          (is (nil? parsed)))))))
+
+
+(deftest fetch-page
+  (testing "Handling of a response with a non-successful HTTP status code."))

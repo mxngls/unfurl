@@ -45,16 +45,18 @@
 
 
 (defn parse-link
-  "Parse link header according to RFC 8288. We limit ourselves to the shape described in
-   [Paginating through API responses](https://docs.joinmastodon.org/api/guidelines/#pagination).
+  "Parse link header according to RFC 8288. We limit ourselves to the 
+   shape described in [Paginating through API responses](https://docs.joinmastodon.org/api/guidelines/#pagination).
    
-   Returns a map from each link's `rel` (keywordized) to its URL, or 
+   Returns a map from each link's `rel` (keywordized) to its URL, or
    nil."
   [header]
-  (into {} (for [link (str/split header #",\s*")]
-             (let [relation (second  (re-find #"rel=\"([^\"]+)\"" link))
-                   url      (second  (re-find #"<([^>]+)>" link))]
-               [(keyword relation) url]))))
+  (not-empty
+      (into {} (for [link (str/split header #",\s*")
+                     :let   [rel  (second  (re-find #"rel=\"([^\"]+)\"" link))
+                             url  (second  (re-find #"<([^>]+)>" link))]
+                     :when  (and rel url)]
+                 [(keyword rel) url]))))
 
 
 (defn fetch-page
