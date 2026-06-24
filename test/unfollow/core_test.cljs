@@ -1,29 +1,26 @@
 (ns unfollow.core-test
   (:require
-      [cljs.test      :refer [deftest is testing use-fixtures]]
-      [clojure.string :as str]
-      [unfollow.core  :as core]))
+      [cljs.core.async  :refer [go]]
+      [cljs.test        :refer [async deftest is testing use-fixtures]]
+      [clojure.core.async :refer [<!]]
+      [clojure.string   :as str]
+      [unfollow.core    :as core]))
 
 
 (def MOCK_MASTODON_INSTANCE_URL "https://my.custom.instance.com")
 (def MOCK_MASTODON_ACCESS_TOKEN "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0")
 
 
-(defn setup-env
-  [t]
-  (let [saved (js/Object.assign #js {} js/process.env)]
-    ;; load required vars
-    (set! js/process.env.MASTODON_INSTANCE_URL MOCK_MASTODON_INSTANCE_URL)
-    (set! js/process.env.MASTODON_ACCESS_TOKEN MOCK_MASTODON_ACCESS_TOKEN)
-
-    ;; execute test(s)
-    (t)
-
-    ;; restore previous environment state
-    (set! js/process.env saved)))
+(def ^:private saved-env (atom nil))
 
 
-(use-fixtures :each setup-env)
+(use-fixtures :each
+  {:before (fn []
+             (reset! saved-env (js/Object.assign #js {} js/process.env))
+             (set! js/process.env.MASTODON_INSTANCE_URL MOCK_MASTODON_INSTANCE_URL)
+             (set! js/process.env.MASTODON_ACCESS_TOKEN MOCK_MASTODON_ACCESS_TOKEN))
+   :after   (fn []
+              (set! js/process.env @saved-env))})
 
 
 (deftest read-config
@@ -79,5 +76,47 @@
           (is (nil? parsed)))))))
 
 
-(deftest fetch-page
-  (testing "Handling of a response with a non-successful HTTP status code."))
+(deftest fetch-raw
+  (let  [->mock-response (fn ->mock-response
+                           ([] (->mock-response nil {}))
+                           ([body] (->mock-response body {}))
+                           ([body {:keys [status headers]
+                                   :or {status 200 headers {}}}]
+                            (js/Response. body #js {:status status :headers (clj->js headers)})))
+
+         mock-fetch! (fn [impl]
+                       (set!
+                           (.-fetch js/globalThis)
+                           (if (fn? impl)
+                             impl
+                             (fn [& _] (js/Promise.resolve impl)))))
+
+         mock-url "https://mastodon.example/api/v1/endpoint"]
+
+
+    (async done
+           (let [orig-fetch (.-fetch js/globalThis)]
+             (go
+               (try
+
+                 (testing "Handling 200 HTTP response"
+                   (mock-fetch! (->mock-response nil {:status 200}))
+                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                     (is (nil? error))
+                     (is (.-ok ok))))
+
+                 (testing "Handling a non-200 HTTP response"
+                   (mock-fetch! (->mock-response nil {:status 404}))
+                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                     (is (nil? ok))
+                     (is (= 404 (.-status error)))))
+
+                 (testing "Handling an error non-HTTP error"
+                   (mock-fetch! (fn [_ _] (js/Promise.reject (js/Error. "no response"))))
+                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                     (is (nil? ok))
+                     (is (some? error))))
+
+                 (finally
+                   (set! (.-fetch js/globalThis) orig-fetch)
+                   (done))))))))

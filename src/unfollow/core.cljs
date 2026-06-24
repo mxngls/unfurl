@@ -200,4 +200,5 @@
 
             (if error
               (log-err (str "Failed to delete account:" acc-name "\n" error))
+
               (log     (str "Successfully unfollowed:"  acc-name)))))))))
