@@ -11,6 +11,25 @@
 (def MOCK_MASTODON_ACCESS_TOKEN "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0")
 
 
+(defn ->mock-response
+  ([] (->mock-response nil {}))
+  ([body] (->mock-response body {}))
+  ([body {:keys [status headers]
+          :or {status 200 headers {}}}]
+   (js/Response. body #js {:status status :headers (clj->js headers)})))
+
+
+(defn mock-fetch!
+  [impl]
+  (set!
+      (.-fetch js/globalThis)
+      (if (fn? impl)
+        impl
+        (fn [& _] (js/Promise.resolve impl)))))
+
+
+(def mock-url "https://mastodon.example/api/v1/endpoint")
+
 (def ^:private saved-env (atom nil))
 
 
@@ -77,23 +96,6 @@
 
 
 (deftest fetch-raw
-  (let  [->mock-response (fn ->mock-response
-                           ([] (->mock-response nil {}))
-                           ([body] (->mock-response body {}))
-                           ([body {:keys [status headers]
-                                   :or {status 200 headers {}}}]
-                            (js/Response. body #js {:status status :headers (clj->js headers)})))
-
-         mock-fetch! (fn [impl]
-                       (set!
-                           (.-fetch js/globalThis)
-                           (if (fn? impl)
-                             impl
-                             (fn [& _] (js/Promise.resolve impl)))))
-
-         mock-url "https://mastodon.example/api/v1/endpoint"]
-
-
     (async done
            (let [orig-fetch (.-fetch js/globalThis)]
              (go
