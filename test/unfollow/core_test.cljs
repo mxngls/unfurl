@@ -19,6 +19,9 @@
    (js/Response. body #js {:status status :headers (clj->js headers)})))
 
 
+(def orig-fetch (.-fetch js/globalThis))
+
+
 (defn mock-fetch!
   [impl]
   (set!
@@ -26,6 +29,11 @@
       (if (fn? impl)
         impl
         (fn [& _] (js/Promise.resolve impl)))))
+
+
+(defn restore-fetch!
+  []
+  (set! (.-fetch js/globalThis) orig-fetch))
 
 
 (def mock-url "https://mastodon.example/api/v1/endpoint")
@@ -96,29 +104,28 @@
 
 
 (deftest fetch-raw
-    (async done
-           (let [orig-fetch (.-fetch js/globalThis)]
-             (go
-               (try
+  (async done
+         (go
+           (try
 
-                 (testing "Handling 200 HTTP response"
-                   (mock-fetch! (->mock-response nil {:status 200}))
-                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
-                     (is (nil? error))
-                     (is (.-ok ok))))
+             (testing "Handling 200 HTTP response"
+               (mock-fetch! (->mock-response nil {:status 200}))
+               (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                 (is (nil? error))
+                 (is (.-ok ok))))
 
-                 (testing "Handling a non-200 HTTP response"
-                   (mock-fetch! (->mock-response nil {:status 404}))
-                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
-                     (is (nil? ok))
-                     (is (= 404 (.-status error)))))
+             (testing "Handling a non-200 HTTP response"
+               (mock-fetch! (->mock-response nil {:status 404}))
+               (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                 (is (nil? ok))
+                 (is (= 404 (.-status error)))))
 
-                 (testing "Handling an error non-HTTP error"
-                   (mock-fetch! (fn [_ _] (js/Promise.reject (js/Error. "no response"))))
-                   (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
-                     (is (nil? ok))
-                     (is (some? error))))
+             (testing "Handling an error non-HTTP error"
+               (mock-fetch! (fn [_ _] (js/Promise.reject (js/Error. "no response"))))
+               (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                 (is (nil? ok))
+                 (is (some? error))))
 
-                 (finally
-                   (set! (.-fetch js/globalThis) orig-fetch)
-                   (done))))))))
+             (finally
+               (restore-fetch!)
+               (done))))))
