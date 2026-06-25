@@ -15,7 +15,7 @@
   ([] (->mock-response nil {}))
   ([body] (->mock-response body {}))
   ([body {:keys [status headers]
-          :or {status 200 headers {}}}]
+          :or   {status 200 headers {}}}]
    (js/Response. body #js {:status status :headers (clj->js headers)})))
 
 
@@ -129,3 +129,52 @@
              (finally
                (restore-fetch!)
                (done))))))
+
+
+(deftest fetch-page
+  (async done
+         (let [;; obtained from https://docs.joinmastodon.org/methods/accounts/#200-ok-6
+               mock-accounts
+               "[{\"id\": \"1020382\", \"username\": \"atul13061987\", \"acct\": \"atul13061987\", \"display_name\": \"\"},
+                 {\"id\": \"1020381\", \"username\": \"linuxliner\", \"acct\": \"linuxliner\", \"display_name\": \"\"}]"]
+           (go
+             (try
+
+               (testing "fetching a page successfully"
+                 (mock-fetch! (->mock-response mock-accounts
+                                               {:status 200
+                                                :headers {:Content-Type "application/json"}}))
+                 (let [{:keys [ok error]} (<! (core/fetch-page mock-url))
+                       items              (:items ok)]
+                   (is (nil? error))
+
+                   (is items)
+                   (is (nil? (:next ok)))
+                   (is (nil? (:prev ok)))
+                   (is (= "1020382" (:id (first  items))))
+                   (is (= "1020381" (:id (second items))))))
+
+               (testing "fetching a page whose body is not encoded in JSON"
+                 (mock-fetch! (->mock-response "Hello, World!"
+                                               {:status 200
+                                                :headers {:Content-Type "text/plain"}}))
+                 (let [{:keys [ok error]} (<! (core/fetch-page mock-url))]
+                   (is (nil? ok))
+                   (is (instance? js/Response error))))
+
+               (testing "fetching a page but failing to parse it's body"
+                 (mock-fetch! (->mock-response 123123123123
+                                               {:status 200}))
+                 (let [{:keys [ok error]} (<! (core/fetch-page mock-url))]
+                   (is (nil? ok))
+                   (is (instance? js/Response error))))
+
+               (testing "fetching a page but encountering an error"
+                 (mock-fetch! (fn [_ _] (js/Promise.reject (js/Error. "no response"))))
+                 (let [{:keys [ok error]} (<! (core/fetch-raw mock-url))]
+                   (is (nil? ok))
+                   (is (instance? js/Response error))))
+
+               (finally
+                 (restore-fetch!)
+                 (done)))))))

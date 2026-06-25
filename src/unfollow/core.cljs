@@ -110,7 +110,7 @@
                 body          (<p! (.text ok))
                 content-type  (or (.get headers "content-type") "")]
 
-            (if (not (str/includes? content-type "json"))
+            (if (not (= content-type "application/json"))
               (do (log-err "expected JSON got" (pr-str content-type) "\n" body)
                   {:error ok})
 
